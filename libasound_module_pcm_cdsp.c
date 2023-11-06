@@ -175,12 +175,6 @@ typedef struct {
   // Make the array a bit bigger to allow them
   size_t n_cargs;
   char *cargs[120];
-  // Search / Replace string tokens - let people use whatever format
-  // they want.
-  char *format_token;
-  char *rate_token;
-  char *channels_token;
-  char *ext_samp_token;
   // Extra samples parameter to pass to CamillaDSP if the config_in template
   // is used instead of config_cmd
   // ext_samp_44100 and ext_samp_4800 allow rate matched expansion of the
@@ -676,14 +670,6 @@ static void free_cdsp(cdsp_t **pcm) {
       free((void *)(*pcm)->cargs[f]);
     }
   }
-  if((*pcm)->format_token)
-    free((void *)(*pcm)->format_token);
-  if((*pcm)->rate_token)
-    free((void *)(*pcm)->rate_token);
-  if((*pcm)->channels_token)
-    free((void *)(*pcm)->channels_token);
-  if((*pcm)->ext_samp_token)
-    free((void *)(*pcm)->ext_samp_token);
   if((*pcm)->start_cmd)
     free((void *)(*pcm)->start_cmd);
   if((*pcm)->camilla_exit_cmd)
@@ -1106,26 +1092,6 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
     if(strcmp(id, "cpath") == 0) {
       if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
       if((err = alloc_copy_string(&pcm->cpath, temp)) < 0) goto _err;
-      continue;
-    }
-    if(strcmp(id, "format_token") == 0) {
-      if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-      if((err = alloc_copy_string(&pcm->format_token, temp)) < 0) goto _err;
-      continue;
-    }
-    if(strcmp(id, "samplerate_token") == 0) {
-      if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-      if((err = alloc_copy_string(&pcm->rate_token, temp)) < 0) goto _err;
-      continue;
-    }
-    if(strcmp(id, "channels_token") == 0) {
-      if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-      if((err = alloc_copy_string(&pcm->channels_token, temp)) < 0) goto _err;
-      continue;
-    }
-    if(strcmp(id, "extrasamples_token") == 0) {
-      if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-      if((err = alloc_copy_string(&pcm->ext_samp_token, temp)) < 0) goto _err;
       continue;
     }
     if(strcmp(id, "cargs") == 0) {
