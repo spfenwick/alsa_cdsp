@@ -168,22 +168,10 @@ typedef struct {
   pid_t cpid;
   // Path to CamillaDSP executable
   char *cpath;
-  // Location of CamillaDSP input YAML template
-  char *config_in;
-  // Alternatively to providing config_in provide a program
-  // that will generate config_out
-  char *config_cmd;
-  // And yet another alternative use CamillaDSP's new internal
-  // subsitution
-  long config_cdsp;
-  // Gain and mute startup file
-  char *vol_file;
   // Arguments to execv
   // cargs[0] = "camilladsp" => Process name
-  // cargs[1] = config_out => Location of CamillaDSP output YAML configuration
-  // cargs[2+] = Additional arguments passed through .asoundrc
-  // If config_cdsp cargs will also be used to hold hw_params
-  // If vol_file is set cargs will also be used to hold mute and gain
+  // cargs[1+] = Additional arguments passed through .asoundrc
+  // cargs will also be used to hold hw_params
   // Make the array a bit bigger to allow them
   size_t n_cargs;
   char *cargs[120];
@@ -530,11 +518,6 @@ static int start_camilla(cdsp_t *pcm) {
     close(fd[0]);
 
     debug("cpath: %s\n", pcm->cpath);
-    debug("config_in: %s\n", pcm->config_in);
-    debug("config_out: %s\n", pcm->cargs[1]);
-    debug("config_cmd: %s\n", pcm->config_cmd);
-    debug("config_cdsp: %ld\n", pcm->config_cdsp);
-    debug("vol_file: %s\n", pcm->vol_file);
     debug("cargs:");
 #if DEBUG > 3
     for(size_t ca = 2; ca < pcm->n_cargs; ca++) {
@@ -547,89 +530,33 @@ static int start_camilla(cdsp_t *pcm) {
     // Use mute < 0 as the flag for gain and mute being set.
     int mute = -1;
     size_t extra_cargs = 0;
-    if(pcm->vol_file) {
-      FILE *volfile = fopen(pcm->vol_file, "r");
-      if(!volfile) {
-        SNDERR("Error reading input volume file %s\n", pcm->vol_file);
-        return -EINVAL;
-      }
-      if(fscanf(volfile, "%lf %d", &gain, &mute) != 2) {
-        SNDERR("Error reading input volume file %s\n", pcm->vol_file);
-        return -EINVAL;
-      }
-      debug("Read Volume File:  Gain = %lf, Mute = %d\n", gain, mute);
-      fclose(volfile);
-    }
-    if(pcm->config_in) {
-      debug("format_token: %s\n", pcm->format_token);
-      debug("rate_token: %s\n", pcm->rate_token);
-      debug("channels_token: %s\n", pcm->channels_token);
-      debug("ext_samp_token: %s\n", pcm->ext_samp_token);
-      FILE *cfgin = fopen(pcm->config_in, "r");
-      if(!cfgin) {
-        SNDERR("Error reading input config file %s\n", pcm->config_in);
-        return -EINVAL;
-      }
-      FILE *cfgout = fopen(pcm->cargs[1], "w");
-      if(!cfgout) {
-        SNDERR("Error writing output config file %s\n", pcm->cargs[1]);
-        return -EINVAL;
-      }
-      char buf[1000];
-      char *obuf;
-      while(fgets(buf, sizeof(buf), cfgin)) {
-        obuf = strrep(buf, pcm->format_token, sformat);
-        obuf = strrep(obuf, pcm->rate_token, srate);
-        obuf = strrep(obuf, pcm->channels_token, schannels);
-        if(extrasamples >= 0) {
-          obuf = strrep(obuf, pcm->ext_samp_token, sextrasamples);
-        }
-        fprintf(cfgout,"%s",obuf);
-      }
-      fclose(cfgin);
-      fclose(cfgout);
-    } else if(pcm->config_cmd) {
-      char command[1000];
-      // Call the config_cmd with the hw params to do whatever
-      // camilla configuration is desired
-      // Command will be called with arguments "format rate channels"
-      snprintf(command, 1000, "%s %s %d %d\n", pcm->config_cmd, 
-          sformat, pcm->io.rate, pcm->io.channels);
-      debug("Calling config_cmd %s\n", command);
-      int err = system(command);
-      if(err != 0) {
-        SNDERR("Error executing config_cmd %s\n", pcm->config_cmd);
-        if(err > 0) return -err;
-        return err;
-      }
+    
+    // Pass the hw_params as arguments directly to CamillaDSP
+    char farg[] = "-f";
+    pcm->cargs[pcm->n_cargs] = farg;
+    pcm->cargs[pcm->n_cargs+1] = sformat;
+    extra_cargs += 2;
+
+    char rarg[] = "-r";
+    pcm->cargs[pcm->n_cargs+2] = rarg;
+    pcm->cargs[pcm->n_cargs+3] = srate;
+    extra_cargs += 2;
+
+    char narg[] = "-n";
+    pcm->cargs[pcm->n_cargs+4] = narg;
+    pcm->cargs[pcm->n_cargs+5] = schannels;
+    extra_cargs += 2;
+
+    char earg[] = "-e";
+    if(extrasamples >= 0) {
+      pcm->cargs[pcm->n_cargs+6] = earg;
+      pcm->cargs[pcm->n_cargs+7] = sextrasamples;
+      extra_cargs += 2;
     } else {
-      // Pass the hw_params as arguments directly to CamillaDSP
-      char farg[] = "-f";
-      pcm->cargs[pcm->n_cargs] = farg;
-      pcm->cargs[pcm->n_cargs+1] = sformat;
-      extra_cargs += 2;
-
-      char rarg[] = "-r";
-      pcm->cargs[pcm->n_cargs+2] = rarg;
-      pcm->cargs[pcm->n_cargs+3] = srate;
-      extra_cargs += 2;
-
-      char narg[] = "-n";
-      pcm->cargs[pcm->n_cargs+4] = narg;
-      pcm->cargs[pcm->n_cargs+5] = schannels;
-      extra_cargs += 2;
-
-      char earg[] = "-e";
-      if(extrasamples >= 0) {
-        pcm->cargs[pcm->n_cargs+6] = earg;
-        pcm->cargs[pcm->n_cargs+7] = sextrasamples;
-        extra_cargs += 2;
-      } else {
-        pcm->cargs[pcm->n_cargs+6] = 0;
-        pcm->cargs[pcm->n_cargs+7] = 0;
-        // Don't advance extra_cargs pointer as we might add
-        // gain and mute
-      }
+      pcm->cargs[pcm->n_cargs+6] = 0;
+      pcm->cargs[pcm->n_cargs+7] = 0;
+      // Don't advance extra_cargs pointer as we might add
+      // gain and mute
     }
     if(mute >= 0) {
       char sgain[30]; // Big enough for argument and value
@@ -744,17 +671,11 @@ static void free_cdsp(cdsp_t **pcm) {
     close((*pcm)->event_fd);
   if((*pcm)->cpath)
     free((void *)(*pcm)->cpath);
-  if((*pcm)->config_in)
-    free((void *)(*pcm)->config_in);
   for(size_t f = 0; f < (*pcm)->n_cargs; f++) {
     if((*pcm)->cargs[f] != 0) {
       free((void *)(*pcm)->cargs[f]);
     }
   }
-  if((*pcm)->config_cmd)
-    free((void *)(*pcm)->config_cmd);
-  if((*pcm)->vol_file)
-    free((void *)(*pcm)->vol_file);
   if((*pcm)->format_token)
     free((void *)(*pcm)->format_token);
   if((*pcm)->rate_token)
@@ -985,12 +906,6 @@ static void cdsp_dump(snd_pcm_ioplug_t *io, snd_output_t *out) {
   cdsp_t *pcm = io->private_data;
   snd_output_printf(out, "CamillaDSP Plugin\n");
   snd_output_printf(out, "c_path: %s\n", pcm->cpath);
-  snd_output_printf(out, "config_out: %s\n", pcm->cargs[1]);
-  if(pcm->config_in)
-    snd_output_printf(out, "config_in: %s\n", pcm->config_in);
-  if(pcm->config_cmd)
-    snd_output_printf(out, "config_cmd: %s\n", pcm->config_cmd);
-  snd_output_printf(out, "vol_file: %s\n", pcm->vol_file);
   // alsa-lib commits the PCM setup only if cdsp_hw_params() returned
   // success, so we only dump the ALSA PCM parameters if CamillaDSP was
   // started.
@@ -1172,7 +1087,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
   long channels = 0;
   // If they list more than 100 rates too bad.
   unsigned int n_rates = 0;
-  pcm->n_cargs = 2; // First two are proc name and config
+  pcm->n_cargs = 1; // First one is proc name
   unsigned int rate_list[100];
   long min_rate = 0;
   long max_rate = 0;
@@ -1191,30 +1106,6 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
     if(strcmp(id, "cpath") == 0) {
       if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
       if((err = alloc_copy_string(&pcm->cpath, temp)) < 0) goto _err;
-      continue;
-    }
-    if(strcmp(id, "config_in") == 0) {
-      if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-      if((err = alloc_copy_string(&pcm->config_in, temp)) < 0) goto _err;
-      continue;
-    }
-    if(strcmp(id, "config_out") == 0) {
-      if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-      if((err = alloc_copy_string(&pcm->cargs[1], temp)) < 0) goto _err;
-      continue;
-    }
-    if(strcmp(id, "config_cmd") == 0) {
-      if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-      if((err = alloc_copy_string(&pcm->config_cmd, temp)) < 0) goto _err;
-      continue;
-    }
-    if(strcmp(id, "config_cdsp") == 0) {
-      if((err = snd_config_get_integer(n, &pcm->config_cdsp)) < 0) goto _err;
-      continue;
-    }
-    if(strcmp(id, "vol_file") == 0) {
-      if((err = snd_config_get_string(n, &temp)) < 0) goto _err;
-      if((err = alloc_copy_string(&pcm->vol_file, temp)) < 0) goto _err;
       continue;
     }
     if(strcmp(id, "format_token") == 0) {
@@ -1337,30 +1228,6 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
     err = -EINVAL;
     goto _err;
   }
-  if(!pcm->config_in && !pcm->config_cmd && !pcm->config_cdsp) {
-    SNDERR("Must supply config_in, config_cmd, or config_cdsp parameter.");
-    err = -EINVAL;
-    goto _err;
-  }
-  if(pcm->config_in) {
-    if(pcm->config_cmd || pcm->config_cdsp) {
-      SNDERR("Only config_in, config_cmd, or config_cdsp can be set.");
-      err = -EINVAL;
-      goto _err;
-    }
-  } else if(pcm->config_cmd) {
-    if(pcm->config_cdsp) {
-      SNDERR("Only config_in, config_cmd, or config_cdsp can be set.");
-      err = -EINVAL;
-      goto _err;
-    }
-  }
-
-  if(!pcm->cargs[1]) {
-    SNDERR("Must supply config_out file parameter.");
-    err = -EINVAL;
-    goto _err;
-  }
 
   if(channels == 0) {
     if(min_channels <= 0 || max_channels <= 0) {
@@ -1411,27 +1278,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
       if(rate_list[ii] > max_rate) max_rate = rate_list[ii];
     }
   }
-  if(pcm->config_in) {
-    if(!pcm->format_token) {
-      if((err = alloc_copy_string(&pcm->format_token, "$format$")) < 0) 
-        goto _err;
-    }
-    if(!pcm->rate_token) {
-      if((err = alloc_copy_string(&pcm->rate_token, "$samplerate$")) < 0) 
-        goto _err;
-    }
-    if(!pcm->channels_token) {
-      if((err = alloc_copy_string(&pcm->channels_token, "$channels$")) < 0) 
-        goto _err;
-    }
-    if(!pcm->ext_samp_token) {
-      if((err = alloc_copy_string(&pcm->ext_samp_token, "$extrasamples$")) < 0) 
-        goto _err;
-    }
-  }
-    
   // Done parsing / validating user input
-
 
   // Establish the event_fd used to signal ALSA
   if ((pcm->event_fd = eventfd(0, EFD_CLOEXEC)) == -1) {
