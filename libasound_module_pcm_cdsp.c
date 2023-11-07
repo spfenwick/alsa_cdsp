@@ -520,9 +520,6 @@ static int start_camilla(cdsp_t *pcm) {
     fprintf(stderr,"\n");
 #endif
     
-    double gain = 0;
-    // Use mute < 0 as the flag for gain and mute being set.
-    int mute = -1;
     size_t extra_cargs = 0;
     
     // Pass the hw_params as arguments directly to CamillaDSP
@@ -551,18 +548,6 @@ static int start_camilla(cdsp_t *pcm) {
       pcm->cargs[pcm->n_cargs+7] = 0;
       // Don't advance extra_cargs pointer as we might add
       // gain and mute
-    }
-    if(mute >= 0) {
-      char sgain[30]; // Big enough for argument and value
-      snprintf(sgain, sizeof(sgain), "-g%lf", gain);
-      pcm->cargs[pcm->n_cargs+extra_cargs] = sgain;
-      if(mute > 0) {
-        char marg[] = "-m";
-        pcm->cargs[pcm->n_cargs+extra_cargs+1] = marg;
-        pcm->cargs[pcm->n_cargs+extra_cargs+2] = 0;
-      } else {
-        pcm->cargs[pcm->n_cargs+extra_cargs+1] = 0;
-      }
     }
 
     execv(pcm->cpath, pcm->cargs);
