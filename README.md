@@ -5,7 +5,7 @@ This is a trimmed down version of the original plugin by scripple.  This version
 
 * It removes the ability to modify the CamillaDSP config file as CamillaDSP now supports overriding key parameters via the command line.
 
-* It removes the ability to specify a config file on the CamillaDSP as this is not required and the name of the config file is contained in the statefile.
+* It removes the ability to specify a config file on the CamillaDSP on the assumption that the config file is contained in the statefile.
 
 * It removes the ability to specify extra_samples as this is specfied of the CamillaDSP config file and is automatically adjusted if the sample rate is overridden.
 
@@ -94,6 +94,8 @@ pcm.camilladsp {
     # in strings or the plugin will fail to load. You should not specify
     # the hw_params arguments here as the plugin will take care of that as
     # they change.
+    # Note that since a CamillaDSP config file is no longer supplied the
+    # -s parameter is required in order for CamillaDSP to start.
     cargs [
       -s "/path/to/statefile.yml"
       -p "1234"
@@ -106,6 +108,21 @@ pcm.camilladsp {
     # the audio device.)  Use it for whatever you want.  Set gpio pins on a 
     # raspberry pi to turn on your amp for example.
     start_cmd "/path/to/start_command"
+
+    # An option not directly related to camilladsp.  A command to run when
+    # the CamillaDSP process is closed.  (Meaning when a playback program
+    # closes the audio device or changes the HW params.)  Use it for
+    # whatever you want.  A good example is storing the gain and mute
+    # settings of CamillaDSP for use with the vol_file option below.
+    #
+    # Note this command is called just before the CamillaDSP process is
+    # closed. That is not necessarily when you are done listening to music.
+    # So unlike the start_cmd this might not work well as a signal to turn
+    # off your amp.  Also note that CamillaDSP is still expecting audio
+    # while this command is running so it may cause a harmless warning
+    # about a buffer underrun to be emitted by CamillaDSP if you have
+    # CamillaDSP's log level set sufficiently high.
+    camilla_exit_cmd "/path/to/camilla_exit_command"
 }
 </pre>
 
