@@ -9,7 +9,9 @@ This is a trimmed down version of the original plugin by scripple.  This version
 
 * It removes the ability to specify extra_samples as this is specfied of the CamillaDSP config file and is automatically adjusted if the sample rate is overridden.
 
-queuelimit: 1 is highly recommended or else you will experience large latency in the audio responding to user input.  It's also suggested you set the playback format to the largest bit depth your hardware can handle.  The playback device does not have to use {channels} if you are using CamillaDSP to change the number of output channels.
+* It removes the vol_file option as this functionality is now provides by the statefile.
+
+queuelimit: 1 is highly recommended in the CamillaDSP config file or else you will experience large latency in the audio responding to user input.  It's also suggested you set the playback format to the largest bit depth your hardware can handle.  The playback device does not have to use {channels} if you are using CamillaDSP to change the number of output channels.
 
 Here is a sample .asoundrc (or /etc/asound.conf) file.
 
@@ -32,6 +34,11 @@ pcm.camilladsp {
     #######################################################################
     #######################################################################
       
+    # cpath specifies the absolute path to the CamillaDSP executable.
+    # CamillaDSP must have executable permission for any user that runs an
+    # audio program that uses this plugin.
+    cpath "/path/to/camilladsp"
+
     #######################################################################
     # Capability Enumeration
     #
