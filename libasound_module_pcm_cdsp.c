@@ -175,8 +175,7 @@ typedef struct {
   // Make the array a bit bigger to allow them
   size_t n_cargs;
   char *cargs[120];
-  // Extra samples parameter to pass to CamillaDSP if the config_in template
-  // is used instead of config_cmd
+  // Extra samples parameter to pass to CamillaDSP
   // ext_samp_44100 and ext_samp_4800 allow rate matched expansion of the
   // extra samples.  They will be multiplied by {rate}/44100 or rate/{48000}
   // if {rate} is an integer multiple of 44100 or 48000 respectively
