@@ -175,6 +175,14 @@ typedef struct {
   // Make the array a bit bigger to allow them
   size_t n_cargs;
   char *cargs[120];
+  // Extra samples parameter to pass to CamillaDSP if the config_in template
+  // is used instead of config_cmd
+  // ext_samp_44100 and ext_samp_4800 allow rate matched expansion of the
+  // extra samples.  They will be multiplied by {rate}/44100 or rate/{48000}
+  // if {rate} is an integer multiple of 44100 or 48000 respectively
+  long ext_samp;
+  long ext_samp_44100;
+  long ext_samp_48000;
 
   // Suppress a spurious warning on the first call to revents for the
   // event triggered during prepare.  Some programs need that event to
@@ -469,6 +477,22 @@ static int start_camilla(cdsp_t *pcm) {
   char srate[10]; // The rate should fit in 9 digits too
   snprintf(srate, sizeof(srate), "%u", pcm->io.rate);
 
+  char sextrasamples[20];  // Some use really long audio chains
+  long extrasamples = -1;
+  // We multiply the ext_samp by the ratio of sample rate to
+  // one of the two common audio rates if the sample rate is an
+  // integer multiple
+  if((pcm->ext_samp_44100 >= 0) && ((pcm->io.rate % 44100) == 0)) {
+    extrasamples = pcm->ext_samp_44100*(pcm->io.rate/44100);
+  } else if((pcm->ext_samp_48000 >= 0) && ((pcm->io.rate % 48000) == 0)) {
+    extrasamples = pcm->ext_samp_48000*(pcm->io.rate/48000);
+  } else if(pcm->ext_samp >= 0) {
+    extrasamples = pcm->ext_samp;
+  }
+  if(extrasamples >= 0) {
+    snprintf(sextrasamples, sizeof(sextrasamples), "%ld", extrasamples);
+  }
+
   // Create the pipe to send data to camilla
   int fd[2];
   if(pipe(fd)) {
@@ -513,6 +537,18 @@ static int start_camilla(cdsp_t *pcm) {
     pcm->cargs[pcm->n_cargs+4] = narg;
     pcm->cargs[pcm->n_cargs+5] = schannels;
     extra_cargs += 2;
+
+    char earg[] = "-e";
+    if(extrasamples >= 0) {
+      pcm->cargs[pcm->n_cargs+6] = earg;
+      pcm->cargs[pcm->n_cargs+7] = sextrasamples;
+      extra_cargs += 2;
+    } else {
+      pcm->cargs[pcm->n_cargs+6] = 0;
+      pcm->cargs[pcm->n_cargs+7] = 0;
+      // Don't advance extra_cargs pointer as we might add
+      // gain and mute
+    }
 
     execv(pcm->cpath, pcm->cargs);
 
@@ -1027,6 +1063,9 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
   long min_rate = 0;
   long max_rate = 0;
   if((err = alloc_copy_string(&pcm->cargs[0], "camilladsp")) < 0) goto _err;
+  pcm->ext_samp = -1;
+  pcm->ext_samp_44100 = -1;
+  pcm->ext_samp_48000 = -1;
 
   snd_config_for_each(i, next, conf) {
     snd_config_t *n = snd_config_iterator_entry(i);
@@ -1089,6 +1128,35 @@ SND_PCM_PLUGIN_DEFINE_FUNC(cdsp) {
     }
     if(strcmp(id, "channels") == 0) {
       if((err = snd_config_get_integer(n, &channels)) < 0) goto _err;
+      continue;
+    }
+    if(strcmp(id, "extra_samples") == 0) {
+      if((err = snd_config_get_integer(n, &pcm->ext_samp)) < 0) goto _err;
+      if(pcm->ext_samp < 0) {
+        SNDERR("extra_samples must be >= 0");
+        err = -EINVAL;
+        goto _err;
+      }
+      continue;
+    }
+    if(strcmp(id, "extra_samples_44100") == 0) {
+      if((err = snd_config_get_integer(n, &pcm->ext_samp_44100)) < 0) 
+        goto _err;
+      if(pcm->ext_samp_44100 < 0) {
+        SNDERR("extra_samples_44100 must be >= 0");
+        err = -EINVAL;
+        goto _err;
+      }
+      continue;
+    }
+    if(strcmp(id, "extra_samples_48000") == 0) {
+      if((err = snd_config_get_integer(n, &pcm->ext_samp_48000)) < 0) 
+        goto _err;
+      if(pcm->ext_samp_48000 < 0) {
+        SNDERR("extra_samples_48000 must be >= 0");
+        err = -EINVAL;
+        goto _err;
+      }
       continue;
     }
     if(strcmp(id, "start_cmd") == 0) {
